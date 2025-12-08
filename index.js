@@ -60,9 +60,7 @@ async function run() {
     app.post("/users", async (req, res) => {
       const user = req.body;
 
-      // Check if user exists already
       const existingUser = await usersCollection.findOne({ email: user.email });
-
       if (existingUser) {
         return res.send({ message: "User already exists" });
       }
@@ -70,6 +68,14 @@ async function run() {
       const result = await usersCollection.insertOne(user);
       res.send(result);
     });
+
+    // Get all users from database
+    app.get('/users', async(req, res) => {
+      const query = {}
+      const cursor = usersCollection.find()
+      const result = await cursor.toArray()
+      res.send(result)
+    })
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
