@@ -58,6 +58,9 @@ async function run() {
     const usersCollection = db.collection("users");
     const donationCollection = db.collection("donationRequests");
 
+
+     /* ---------------------- USERS ---------------------- */
+
     // Store all the users in db
     app.post("/users", async (req, res) => {
       const user = req.body;
@@ -85,7 +88,7 @@ async function run() {
         return res.status(400).send({ message: "Email is required" });
       }
 
-      // SECURE CHECK: user can only access their own data
+     
       if (req.tokenEmail !== email) {
         return res.status(403).send({ message: "Forbidden!" });
       }
@@ -130,6 +133,7 @@ async function run() {
       }
     });
 
+    /* ---------------------- DONATION REQUESTS ---------------------- */
     // Create a new donation request
     app.post("/donation-requests", verifyJWT, async (req, res) => {
       const donationData = req.body;
@@ -146,6 +150,30 @@ async function run() {
         res.send(result);
       }
     );
+
+    // Get logged-in user's donation requests
+    app.get("/donation-requests/email", verifyJWT, async (req, res) => {
+      const email = req.query.email;
+
+      if (!email)
+        return res.status(400).send({ message: "Email is required" });
+
+      // User can access only their own requests
+      if (req.tokenEmail !== email)
+        return res.status(403).send({ message: "Forbidden!" });
+
+      const result = await donationCollection
+        .find({ requesterEmail: email })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.send(result);
+    });
+
+
+
+
+     /* ---------------------- END ---------------------- */
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
