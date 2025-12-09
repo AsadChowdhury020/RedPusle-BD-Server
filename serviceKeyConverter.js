@@ -1,5 +1,5 @@
 const fs = require('fs')
-const jsonData = fs.readFileSync('./serviceKey.json')
+const jsonData = fs.readFileSync('./redpulse-bde-adminsdk.json')
 
 const base64String = Buffer.from(jsonData, 'utf-8').toString('base64')
 console.log(base64String)

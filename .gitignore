@@ -13,7 +13,7 @@ node_modules
 # Environment & sensitive files
 .env
 serviceAccountKey.
-serviceKey.json
+redpulse-bde-adminsdk.json
 
 
 # Editor directories and files

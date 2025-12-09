@@ -1,7 +1,7 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const admin = require("firebase-admin");
 const port = process.env.PORT || 3000;
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
@@ -56,10 +56,9 @@ async function run() {
   try {
     const db = client.db("RedPulseDB");
     const usersCollection = db.collection("users");
-    const donationCollection = db.collection("donationRequests");
+    const donationsCollection = db.collection("donationRequests");
 
-
-     /* ---------------------- USERS ---------------------- */
+    /* ---------------------- USERS ---------------------- */
 
     // Store all the users in db
     app.post("/users", async (req, res) => {
@@ -81,6 +80,8 @@ async function run() {
       const result = await cursor.toArray();
       res.send(result);
     });
+
+    // Get a single user by email from database
     app.get("/users/email", verifyJWT, async (req, res) => {
       const email = req.query.email;
 
@@ -88,7 +89,6 @@ async function run() {
         return res.status(400).send({ message: "Email is required" });
       }
 
-     
       if (req.tokenEmail !== email) {
         return res.status(403).send({ message: "Forbidden!" });
       }
@@ -100,6 +100,22 @@ async function run() {
       }
 
       res.send(user);
+    });
+
+    app.get("/users/:email/role", verifyJWT, async (req, res) => {
+      const email = req.params.email;
+
+      if (req.tokenEmail !== email) {
+        return res.status(403).send({ message: "Forbidden!" });
+      }
+
+      const user = await usersCollection.findOne({ email });
+
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+
+      res.send({ role: user.role });
     });
 
     // Update user role or status
@@ -142,38 +158,100 @@ async function run() {
         return res.status(400).send({ message: "Invalid data" });
       }
 
+      donationData.createdAt = new Date();
 
-        donationData.createdAt = new Date();
+      const result = await donationsCollection.insertOne(donationData);
 
-        const result = await donationCollection.insertOne(donationData);
+      res.send(result);
+    });
 
-        res.send(result);
-      }
-    );
+    // Get all user's donation requests
+    app.get("/donation-requests", verifyJWT, async (req, res) => {
+      const cursor = donationsCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
 
     // Get logged-in user's donation requests
     app.get("/donation-requests/email", verifyJWT, async (req, res) => {
       const email = req.query.email;
 
-      if (!email)
-        return res.status(400).send({ message: "Email is required" });
+      if (!email) return res.status(400).send({ message: "Email is required" });
 
       // User can access only their own requests
       if (req.tokenEmail !== email)
         return res.status(403).send({ message: "Forbidden!" });
 
-      const result = await donationCollection
+      const result = await donationsCollection
         .find({ requesterEmail: email })
         .sort({ createdAt: -1 })
         .toArray();
 
       res.send(result);
     });
+    // Get donation requests by status (public)
+    app.get("/donation-requests/status", async (req, res) => {
+      const status = req.query.status;
 
+      if (!status) {
+        return res.status(400).send({ message: "Status is required" });
+      }
+      const result = await donationsCollection
+        .find({ status })
+        .sort({ createdAt: -1 })
+        .toArray();
 
+      res.send(result);
+    });
 
+    // Get a single donation request by ID
+    app.get("/donation-requests/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
 
-     /* ---------------------- END ---------------------- */
+      const request = await donationsCollection.findOne({
+        _id: new ObjectId(id),
+      });
+
+      if (!request) {
+        return res.status(404).send({ message: "Donation request not found" });
+      }
+
+      res.send(request);
+    });
+
+    
+
+    // Update donation request status or other fields
+    app.patch("/donation-requests/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+      const updateData = req.body;
+
+      const result = await donationsCollection.updateOne(
+        { _id: new ObjectId(id) },
+        { $set: updateData }
+      );
+
+      if (result.modifiedCount === 0)
+        return res.status(404).send({ message: "Update failed or no changes" });
+
+      res.send({ message: "Donation request updated successfully" });
+    });
+
+    // Delete a donation request
+    app.delete("/donation-requests/:id", verifyJWT, async (req, res) => {
+      const id = req.params.id;
+
+      const result = await donationsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
+
+      if (result.deletedCount === 0)
+        return res.status(404).send({ message: "Delete failed" });
+
+      res.send({ message: "Donation request deleted successfully" });
+    });
+
+    /* ---------------------- END ---------------------- */
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
