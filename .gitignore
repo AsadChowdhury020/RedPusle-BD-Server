@@ -12,7 +12,9 @@ node_modules
 
 # Environment & sensitive files
 .env
-serviceAccountKey.json
+serviceAccountKey.
+serviceKey.json
+
 
 # Editor directories and files
 .vscode/*
