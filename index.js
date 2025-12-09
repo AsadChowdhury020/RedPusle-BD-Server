@@ -70,12 +70,63 @@ async function run() {
     });
 
     // Get all users from database
-    app.get('/users', async(req, res) => {
-      const query = {}
-      const cursor = usersCollection.find()
-      const result = await cursor.toArray()
-      res.send(result)
-    })
+    app.get("/users", async (req, res) => {
+      const query = {};
+      const cursor = usersCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+    app.get("/users/email", verifyJWT, async (req, res) => {
+      const email = req.query.email;
+
+      if (!email) {
+        return res.status(400).send({ message: "Email is required" });
+      }
+
+      // SECURE CHECK: user can only access their own data
+      if (req.tokenEmail !== email) {
+        return res.status(403).send({ message: "Forbidden!" });
+      }
+
+      const user = await usersCollection.findOne({ email });
+
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+
+      res.send(user);
+    });
+
+    // Update user role or status
+    app.patch("/users", async (req, res) => {
+      const email = req.query.email;
+      // const email = req.tokenEmail;
+      const updateData = req.body;
+
+      if (!email) {
+        return res.status(400).send({ message: "Email is required" });
+      }
+
+      try {
+        const filter = { email: email };
+        const updateDoc = {
+          $set: updateData,
+        };
+
+        const result = await usersCollection.updateOne(filter, updateDoc);
+
+        if (result.modifiedCount === 0) {
+          return res
+            .status(404)
+            .send({ message: "User not found or no changes made" });
+        }
+
+        res.send({ message: "User updated successfully" });
+      } catch (error) {
+        console.log(error);
+        res.status(500).send({ message: "Failed to update user", error });
+      }
+    });
 
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
