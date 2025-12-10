@@ -57,6 +57,7 @@ async function run() {
     const db = client.db("RedPulseDB");
     const usersCollection = db.collection("users");
     const donationsCollection = db.collection("donationRequests");
+    const blogsCollection = db.collection("blogs");
 
     /* ---------------------- USERS ---------------------- */
 
@@ -278,6 +279,35 @@ async function run() {
 
       res.send({ message: "Donation request deleted successfully" });
     });
+
+    /* ---------------------- BLOGS ---------------------- */
+     // GET all blogs
+    app.get("/blogs", async (req, res) => {
+      try {
+        const blogs = await blogsCollection
+          .find()
+          // .sort({ createdAt: -1 }) // newest first
+          .toArray();
+
+        res.send(blogs);
+      } catch (err) {
+        console.error("Error fetching blogs:", err);
+        res.status(500).send({ error: "Failed to fetch blogs" });
+      }
+    });
+
+    // GET id wise blog
+    app.get("/blogs/:id", async (req, res) => {
+ 
+        const id = req.params.id;
+
+        const query = { _id : new ObjectId(id)}
+        const result = await blogsCollection.findOne(query);
+
+        res.send(result);   
+    });
+
+
 
     /* ---------------------- END ---------------------- */
 
