@@ -281,7 +281,13 @@ async function run() {
     });
 
     /* ---------------------- BLOGS ---------------------- */
-     // GET all blogs
+    app.post("/blogs", async (req, res) => {
+      const blog = req.body;
+      const result = await blogsCollection.insertOne(blog);
+      res.send(result);
+    });
+
+    // GET all blogs
     app.get("/blogs", async (req, res) => {
       try {
         const blogs = await blogsCollection
@@ -298,16 +304,13 @@ async function run() {
 
     // GET id wise blog
     app.get("/blogs/:id", async (req, res) => {
- 
-        const id = req.params.id;
+      const id = req.params.id;
 
-        const query = { _id : new ObjectId(id)}
-        const result = await blogsCollection.findOne(query);
+      const query = { _id: new ObjectId(id) };
+      const result = await blogsCollection.findOne(query);
 
-        res.send(result);   
+      res.send(result);
     });
-
-
 
     /* ---------------------- END ---------------------- */
 
