@@ -149,6 +149,36 @@ async function run() {
       }
     });
 
+    // GET api for search
+    app.get("/search-donors", async (req, res) => {
+      try {
+        const { bloodGroup, district, upazila } = req.query;
+
+        // Prevent blind search — require at least one filter
+        if (!bloodGroup && !district && !upazila) {
+          return res.status(400).send({
+            message:
+              "At least one search parameter (bloodGroup, district, or upazila) is required",
+          });
+        }
+
+        // Build query conditionally
+        const query = {
+          role: "donor", // Only search among donors
+        };
+
+        if (bloodGroup) query.bloodGroup = bloodGroup;
+        if (district) query.district = district;
+        if (upazila) query.upazila = upazila;
+
+        const result = await usersCollection.find(query).toArray();
+        res.send(result);
+      } catch (err) {
+        console.error("Error searching donors:", err);
+        res.status(500).send({ error: "Failed to search donors" });
+      }
+    });
+
     /* ---------------------- DONATION REQUESTS ---------------------- */
     // Create a new donation request
     app.post("/donation-requests", verifyJWT, async (req, res) => {
@@ -218,8 +248,6 @@ async function run() {
 
       res.send(request);
     });
-
-    
 
     // Update donation request status or other fields
     app.patch("/donation-requests/:id", verifyJWT, async (req, res) => {
