@@ -4,6 +4,7 @@ const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const admin = require("firebase-admin");
 const port = process.env.PORT || 3000;
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 const decoded = Buffer.from(process.env.FB_SERVICE_KEY, "base64").toString(
   "utf-8"
 );
@@ -58,6 +59,7 @@ async function run() {
     const usersCollection = db.collection("users");
     const donationsCollection = db.collection("donationRequests");
     const blogsCollection = db.collection("blogs");
+    const fundingCollection = db.collection("funding");
 
     /* ---------------------- USERS ---------------------- */
 
@@ -311,6 +313,113 @@ async function run() {
 
       res.send(result);
     });
+
+    /* ---------------------- Funding ---------------------- */
+
+    // Post funding
+    app.post("/funding", verifyJWT, async (req, res) => {
+      const fund = req.body;
+
+      try {
+        const result = await fundingCollection.insertOne(fund);
+        res.send(result);
+      } catch (error) {
+        console.log(error);
+        res.status(500).send({ message: "Failed to store fund", error });
+      }
+    });
+
+    // GET funding with pagination
+    app.get("/funding", verifyJWT, async (req, res) => {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 5;
+      const skip = (page - 1) * limit;
+
+      try {
+        const total = await fundingCollection.countDocuments();
+        const fundings = await fundingCollection
+          .find()
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        res.send({
+          data: fundings,
+          totalPages: Math.ceil(total / limit),
+          currentPage: page,
+        });
+      } catch (error) {
+        res.status(500).send({ message: "Failed to fetch funding data" });
+      }
+    });
+
+    app.post("/create-checkout-session", verifyJWT, async (req, res) => {
+      const { amount, email } = req.body;
+
+      try {
+        const session = await stripe.checkout.sessions.create({
+          customer_email: email, // Auto fill email in Stripe Checkout
+          payment_method_types: ["card"],
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: { name: "RedPulseBD Funding Support" },
+                unit_amount: amount * 100,
+              },
+              quantity: 1,
+            },
+          ],
+          mode: "payment",
+          success_url:
+            "http://localhost:5173/funding-success?session_id={CHECKOUT_SESSION_ID}",
+          cancel_url: "http://localhost:5173/funding-cancel",
+
+        });
+        res.send({ url: session.url });
+      } catch (error) {
+        console.log(error);
+        res.status(500).send({ error: error.message });
+      }
+    });
+
+    app.get("/verify-checkout-session/:id", async (req, res) => {
+      try {
+        const session = await stripe.checkout.sessions.retrieve(req.params.id);
+
+        if (session.payment_status !== "paid") {
+          return res.status(400).send({ message: "Payment not completed" });
+        }
+
+        const data = {
+          name: session.customer_details.name,
+          email: session.customer_details.email,
+          amount: session.amount_total / 100,
+          transactionId: session.payment_intent,
+          trackingId: session.id,
+          createdAt: new Date(),
+        };
+
+        //  Prevent duplicate insertion
+        const exists = await fundingCollection.findOne({
+          transactionId: data.transactionId,
+        });
+
+        if (!exists) {
+          await fundingCollection.insertOne(data);
+        }
+
+        res.send({
+          ...data,
+          date: data.createdAt.toISOString(),
+        });
+      } catch (error) {
+        console.log("Verify Error:", error);
+        res.status(500).send({ message: "Verification failed" });
+      }
+    });
+
 
     /* ---------------------- END ---------------------- */
 
