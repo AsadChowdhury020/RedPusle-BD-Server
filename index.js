@@ -60,6 +60,7 @@ async function run() {
     const donationsCollection = db.collection("donationRequests");
     const blogsCollection = db.collection("blogs");
     const fundingCollection = db.collection("funding");
+    const contactsCollection = db.collection("contacts");
 
     /* ---------------------- USERS ---------------------- */
 
@@ -181,6 +182,7 @@ async function run() {
         res.status(500).send({ error: "Failed to search donors" });
       }
     });
+
 
     /* ---------------------- DONATION REQUESTS ---------------------- */
     // Create a new donation request
@@ -375,7 +377,6 @@ async function run() {
           success_url:
             "http://localhost:5173/funding-success?session_id={CHECKOUT_SESSION_ID}",
           cancel_url: "http://localhost:5173/funding-cancel",
-
         });
         res.send({ url: session.url });
       } catch (error) {
@@ -419,6 +420,20 @@ async function run() {
         res.status(500).send({ message: "Verification failed" });
       }
     });
+
+    app.get("/funding/total", verifyJWT, async (req, res) => {
+      const funds = await fundingCollection.find().toArray();
+      const total = funds.reduce((sum, item) => sum + item.amount, 0);
+
+      res.send({total})
+    });
+
+    /* ---------------------- Contacts ---------------------- */
+    app.post('/contacts', async(req, res) => {
+      const newContact = req.body
+      const result = await contactsCollection.insertOne(newContact)
+      res.send(result)
+    })
 
 
     /* ---------------------- END ---------------------- */
