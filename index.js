@@ -122,8 +122,9 @@ async function run() {
       res.send({ role: user.role });
     });
 
-    // Update user role or status
-    app.patch("/users", async (req, res) => {
+
+    // Update user 
+    app.patch("/users",verifyJWT, async (req, res) => {
       const email = req.query.email;
       // const email = req.tokenEmail;
       const updateData = req.body;
@@ -145,8 +146,12 @@ async function run() {
             .status(404)
             .send({ message: "User not found or no changes made" });
         }
+        res.send({
+          message: "User updated successfully",
+          modifiedCount: result.modifiedCount,
+        });
 
-        res.send({ message: "User updated successfully" });
+        // res.send({ message: "User updated successfully" });
       } catch (error) {
         console.log(error);
         res.status(500).send({ message: "Failed to update user", error });
@@ -182,7 +187,6 @@ async function run() {
         res.status(500).send({ error: "Failed to search donors" });
       }
     });
-
 
     /* ---------------------- DONATION REQUESTS ---------------------- */
     // Create a new donation request
@@ -283,6 +287,113 @@ async function run() {
 
       res.send({ message: "Donation request deleted successfully" });
     });
+
+    
+    // ---------------------
+    app.get("/donation-requests/stats", verifyJWT, async (req, res) => {
+  try {
+    const basePipeline = [
+      {
+        $match: {
+          createdAt: { $exists: true, $ne: null },
+        },
+      },
+      {
+        $addFields: {
+          createdAtDate: {
+            $switch: {
+              branches: [
+                {
+                  case: { $eq: [{ $type: "$createdAt" }, "date"] },
+                  then: "$createdAt",
+                },
+                {
+                  case: { $eq: [{ $type: "$createdAt" }, "string"] },
+                  then: {
+                    $dateFromString: {
+                      dateString: "$createdAt",
+                      onError: null,
+                      onNull: null,
+                    },
+                  },
+                },
+              ],
+              default: null,
+            },
+          },
+        },
+      },
+      {
+        $match: {
+          createdAtDate: { $ne: null },
+        },
+      },
+    ];
+
+    const daily = await donationsCollection
+      .aggregate([
+        ...basePipeline,
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$createdAtDate",
+              },
+            },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+        { $limit: 7 },
+      ])
+      .toArray();
+
+    const weekly = await donationsCollection
+      .aggregate([
+        ...basePipeline,
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-W%U",
+                date: "$createdAtDate",
+              },
+            },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+        { $limit: 6 },
+      ])
+      .toArray();
+
+    const monthly = await donationsCollection
+      .aggregate([
+        ...basePipeline,
+        {
+          $group: {
+            _id: {
+              $dateToString: {
+                format: "%Y-%m",
+                date: "$createdAtDate",
+              },
+            },
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+        { $limit: 6 },
+      ])
+      .toArray();
+
+    res.send({ daily, weekly, monthly });
+  } catch (error) {
+    console.error("Donation stats error:", error);
+    res.status(500).send({ message: "Failed to load stats" });
+  }
+});
+
 
     /* ---------------------- BLOGS ---------------------- */
     app.post("/blogs", async (req, res) => {
@@ -425,16 +536,15 @@ async function run() {
       const funds = await fundingCollection.find().toArray();
       const total = funds.reduce((sum, item) => sum + item.amount, 0);
 
-      res.send({total})
+      res.send({ total });
     });
 
     /* ---------------------- Contacts ---------------------- */
-    app.post('/contacts', async(req, res) => {
-      const newContact = req.body
-      const result = await contactsCollection.insertOne(newContact)
-      res.send(result)
-    })
-
+    app.post("/contacts", async (req, res) => {
+      const newContact = req.body;
+      const result = await contactsCollection.insertOne(newContact);
+      res.send(result);
+    });
 
     /* ---------------------- END ---------------------- */
 
