@@ -18,6 +18,7 @@ const app = express();
 app.use(
   cors({
     origin: [
+      process.env.CLIENT_DOMAIN,
       "http://localhost:5173",
       "http://localhost:5174",
       "http://localhost:5175",
@@ -61,6 +62,44 @@ async function run() {
     const blogsCollection = db.collection("blogs");
     const fundingCollection = db.collection("funding");
     const contactsCollection = db.collection("contacts");
+
+    // Role middleware
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.tokenEmail;
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+
+      if (!user || user?.role !== "admin") {
+        return res
+          .status(403)
+          .send({ message: "Admin only Actions", role: user?.role });
+      }
+      next();
+    };
+    const verifyVolunteer = async (req, res, next) => {
+      const email = req.tokenEmail;
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+
+      if (!user || user?.role !== "volunteer") {
+        return res
+          .status(403)
+          .send({ message: "Volunteer only Actions", role: user?.role });
+      }
+      next();
+    };
+    const verifyDonor = async (req, res, next) => {
+      const email = req.tokenEmail;
+      const query = { email: email };
+      const user = await usersCollection.findOne(query);
+
+      if (!user || user?.role !== "donor") {
+        return res
+          .status(403)
+          .send({ message: "Donor only Actions", role: user?.role });
+      }
+      next();
+    };
 
     /* ---------------------- USERS ---------------------- */
 
@@ -122,9 +161,8 @@ async function run() {
       res.send({ role: user.role });
     });
 
-
-    // Update user 
-    app.patch("/users",verifyJWT, async (req, res) => {
+    // Update user
+    app.patch("/users", verifyJWT, async (req, res) => {
       const email = req.query.email;
       // const email = req.tokenEmail;
       const updateData = req.body;
@@ -243,12 +281,117 @@ async function run() {
       res.send(result);
     });
 
+       app.get("/donation-requests/stats", verifyJWT, async (req, res) => {
+      try {
+        const basePipeline = [
+          {
+            $match: {
+              createdAt: { $exists: true, $ne: null },
+            },
+          },
+          {
+            $addFields: {
+              createdAtDate: {
+                $switch: {
+                  branches: [
+                    {
+                      case: { $eq: [{ $type: "$createdAt" }, "date"] },
+                      then: "$createdAt",
+                    },
+                    {
+                      case: { $eq: [{ $type: "$createdAt" }, "string"] },
+                      then: {
+                        $dateFromString: {
+                          dateString: "$createdAt",
+                          onError: null,
+                          onNull: null,
+                        },
+                      },
+                    },
+                  ],
+                  default: null,
+                },
+              },
+            },
+          },
+          {
+            $match: {
+              createdAtDate: { $ne: null },
+            },
+          },
+        ];
+
+        const daily = await donationsCollection
+          .aggregate([
+            ...basePipeline,
+            {
+              $group: {
+                _id: {
+                  $dateToString: {
+                    format: "%Y-%m-%d",
+                    date: "$createdAtDate",
+                  },
+                },
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { _id: 1 } },
+            { $limit: 7 },
+          ])
+          .toArray();
+
+        const weekly = await donationsCollection
+          .aggregate([
+            ...basePipeline,
+            {
+              $group: {
+                _id: {
+                  $dateToString: {
+                    format: "%Y-W%U",
+                    date: "$createdAtDate",
+                  },
+                },
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { _id: 1 } },
+            { $limit: 6 },
+          ])
+          .toArray();
+
+        const monthly = await donationsCollection
+          .aggregate([
+            ...basePipeline,
+            {
+              $group: {
+                _id: {
+                  $dateToString: {
+                    format: "%Y-%m",
+                    date: "$createdAtDate",
+                  },
+                },
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { _id: 1 } },
+            { $limit: 6 },
+          ])
+          .toArray();
+
+        res.send({ daily, weekly, monthly });
+      } catch (error) {
+        console.error("Donation stats error:", error);
+        res.status(500).send({ message: "Failed to load stats" });
+      }
+    });
+
     // Get a single donation request by ID
     app.get("/donation-requests/:id", verifyJWT, async (req, res) => {
       const id = req.params.id;
 
       const request = await donationsCollection.findOne({
-        _id: new ObjectId(id),
+        // _id: new ObjectId(id),
+        _id: id,
       });
 
       if (!request) {
@@ -289,111 +432,9 @@ async function run() {
     });
 
     
+
     // ---------------------
-    app.get("/donation-requests/stats", verifyJWT, async (req, res) => {
-  try {
-    const basePipeline = [
-      {
-        $match: {
-          createdAt: { $exists: true, $ne: null },
-        },
-      },
-      {
-        $addFields: {
-          createdAtDate: {
-            $switch: {
-              branches: [
-                {
-                  case: { $eq: [{ $type: "$createdAt" }, "date"] },
-                  then: "$createdAt",
-                },
-                {
-                  case: { $eq: [{ $type: "$createdAt" }, "string"] },
-                  then: {
-                    $dateFromString: {
-                      dateString: "$createdAt",
-                      onError: null,
-                      onNull: null,
-                    },
-                  },
-                },
-              ],
-              default: null,
-            },
-          },
-        },
-      },
-      {
-        $match: {
-          createdAtDate: { $ne: null },
-        },
-      },
-    ];
-
-    const daily = await donationsCollection
-      .aggregate([
-        ...basePipeline,
-        {
-          $group: {
-            _id: {
-              $dateToString: {
-                format: "%Y-%m-%d",
-                date: "$createdAtDate",
-              },
-            },
-            count: { $sum: 1 },
-          },
-        },
-        { $sort: { _id: 1 } },
-        { $limit: 7 },
-      ])
-      .toArray();
-
-    const weekly = await donationsCollection
-      .aggregate([
-        ...basePipeline,
-        {
-          $group: {
-            _id: {
-              $dateToString: {
-                format: "%Y-W%U",
-                date: "$createdAtDate",
-              },
-            },
-            count: { $sum: 1 },
-          },
-        },
-        { $sort: { _id: 1 } },
-        { $limit: 6 },
-      ])
-      .toArray();
-
-    const monthly = await donationsCollection
-      .aggregate([
-        ...basePipeline,
-        {
-          $group: {
-            _id: {
-              $dateToString: {
-                format: "%Y-%m",
-                date: "$createdAtDate",
-              },
-            },
-            count: { $sum: 1 },
-          },
-        },
-        { $sort: { _id: 1 } },
-        { $limit: 6 },
-      ])
-      .toArray();
-
-    res.send({ daily, weekly, monthly });
-  } catch (error) {
-    console.error("Donation stats error:", error);
-    res.status(500).send({ message: "Failed to load stats" });
-  }
-});
-
+ 
 
     /* ---------------------- BLOGS ---------------------- */
     app.post("/blogs", async (req, res) => {
@@ -549,10 +590,10 @@ async function run() {
     /* ---------------------- END ---------------------- */
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
   }

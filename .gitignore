@@ -27,3 +27,4 @@ redpulse-bde-adminsdk.json
 *.sln
 *.sw?
 
+.vercel
