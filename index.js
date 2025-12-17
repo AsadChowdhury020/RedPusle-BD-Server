@@ -281,7 +281,8 @@ async function run() {
       res.send(result);
     });
 
-       app.get("/donation-requests/stats", verifyJWT, async (req, res) => {
+    // Get the admin home page statistics
+    app.get("/donation-requests/stats", verifyJWT, async (req, res) => {
       try {
         const basePipeline = [
           {
@@ -430,11 +431,6 @@ async function run() {
 
       res.send({ message: "Donation request deleted successfully" });
     });
-
-    
-
-    // ---------------------
- 
 
     /* ---------------------- BLOGS ---------------------- */
     app.post("/blogs", async (req, res) => {
